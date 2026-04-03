@@ -31,7 +31,7 @@ async function callEdgeFunction(token: string, payload: object) {
   let res: Response;
   try {
     res = await fetch(
-      `${import.meta.env.VITE_PUBLIC_SUPABASE_URL}/functions/v1/manage-school-user`,
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-school-user`,
       {
         method: 'POST',
         headers: {
