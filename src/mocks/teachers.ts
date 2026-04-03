@@ -1,0 +1,122 @@
+export const mockTeachers = [
+  {
+    id: 'T001',
+    schoolId: 'elite-school',
+    name: 'Jean Baptiste Mugabo',
+    email: 'j.mugabo@elite.gosmartmis.rw',
+    phone: '+250788123456',
+    subject: 'Mathematics',
+    qualification: 'Bachelor of Education (Mathematics)',
+    assignedClasses: ['P4A', 'P5A', 'P6A'],
+    status: 'active',
+    joinedDate: '2022-01-15'
+  },
+  {
+    id: 'T002',
+    schoolId: 'elite-school',
+    name: 'Marie Claire Uwase',
+    email: 'm.uwase@elite.gosmartmis.rw',
+    phone: '+250788234567',
+    subject: 'English',
+    qualification: 'Bachelor of Arts (English Literature)',
+    assignedClasses: ['P3A', 'P4A', 'P5A'],
+    status: 'active',
+    joinedDate: '2021-09-01'
+  },
+  {
+    id: 'T003',
+    schoolId: 'elite-school',
+    name: 'Patrick Nkurunziza',
+    email: 'p.nkurunziza@elite.gosmartmis.rw',
+    phone: '+250788345678',
+    subject: 'Science',
+    qualification: 'Bachelor of Science (Biology)',
+    assignedClasses: ['P4A', 'P5A', 'P6A'],
+    status: 'active',
+    joinedDate: '2022-03-10'
+  },
+  {
+    id: 'T004',
+    schoolId: 'elite-school',
+    name: 'Grace Mukamana',
+    email: 'g.mukamana@elite.gosmartmis.rw',
+    phone: '+250788456789',
+    subject: 'Kinyarwanda',
+    qualification: 'Bachelor of Education (Languages)',
+    assignedClasses: ['P1A', 'P2A', 'P3A'],
+    status: 'active',
+    joinedDate: '2020-08-15'
+  },
+  {
+    id: 'T005',
+    schoolId: 'elite-school',
+    name: 'Emmanuel Habimana',
+    email: 'e.habimana@elite.gosmartmis.rw',
+    phone: '+250788567890',
+    subject: 'Social Studies',
+    qualification: 'Bachelor of Arts (History)',
+    assignedClasses: ['P5A', 'P6A'],
+    status: 'active',
+    joinedDate: '2021-01-20'
+  },
+  {
+    id: 'T006',
+    schoolId: 'elite-school',
+    name: 'Claudine Uwimana',
+    email: 'c.uwimana@elite.gosmartmis.rw',
+    phone: '+250788678901',
+    subject: 'French',
+    qualification: 'Bachelor of Arts (French)',
+    assignedClasses: ['P4A', 'P5A', 'P6A'],
+    status: 'active',
+    joinedDate: '2022-09-05'
+  },
+  {
+    id: 'T007',
+    schoolId: 'elite-school',
+    name: 'David Nsengimana',
+    email: 'd.nsengimana@elite.gosmartmis.rw',
+    phone: '+250788789012',
+    subject: 'Physical Education',
+    qualification: 'Bachelor of Sports Science',
+    assignedClasses: ['P1A', 'P2A', 'P3A', 'P4A', 'P5A', 'P6A'],
+    status: 'active',
+    joinedDate: '2021-05-12'
+  },
+  {
+    id: 'T008',
+    schoolId: 'elite-school',
+    name: 'Alice Mukamazimpaka',
+    email: 'a.mukamazimpaka@elite.gosmartmis.rw',
+    phone: '+250788890123',
+    subject: 'Arts & Crafts',
+    qualification: 'Bachelor of Fine Arts',
+    assignedClasses: ['P2A', 'P3A', 'P4A'],
+    status: 'active',
+    joinedDate: '2023-01-10'
+  },
+  {
+    id: 'T009',
+    schoolId: 'elite-school',
+    name: 'Joseph Bizimana',
+    email: 'j.bizimana@elite.gosmartmis.rw',
+    phone: '+250788901234',
+    subject: 'Religious Education',
+    qualification: 'Bachelor of Theology',
+    assignedClasses: ['P1A', 'P2A', 'P3A'],
+    status: 'active',
+    joinedDate: '2020-02-15'
+  },
+  {
+    id: 'T010',
+    schoolId: 'elite-school',
+    name: 'Beatrice Uwera',
+    email: 'b.uwera@elite.gosmartmis.rw',
+    phone: '+250788012345',
+    subject: 'Music',
+    qualification: 'Diploma in Music Education',
+    assignedClasses: ['P1A', 'P2A', 'P3A', 'P4A'],
+    status: 'active',
+    joinedDate: '2022-06-20'
+  }
+];
