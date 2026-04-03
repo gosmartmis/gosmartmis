@@ -13,7 +13,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 /**
  * Clear all auth-related storage (localStorage + sessionStorage).
- * Call this whenever a session becomes invalid.
  */
 export function clearAllAuthStorage() {
   sessionStorage.clear();
@@ -29,8 +28,7 @@ export function clearAllAuthStorage() {
   }
 }
 
-// Global listener — catches TOKEN_REFRESH_FAILURE from anywhere in the app
-// and wipes stale tokens so the user gets redirected to login cleanly.
+// Listen for auth failures
 supabase.auth.onAuthStateChange((event) => {
   if (event === 'TOKEN_REFRESH_FAILURE' || event === 'SIGNED_OUT') {
     clearAllAuthStorage();
@@ -53,20 +51,20 @@ export type UserProfile = {
 };
 
 /**
- * Sign in with email and password, then fetch the user's profile.
- * Returns the profile (which contains the role) or throws an error.
+ * Sign in user
  */
 export async function signInWithEmail(
   email: string,
   password: string
 ): Promise<UserProfile> {
-  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  const { data: authData, error: authError } =
+    await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
   if (authError) throw new Error(authError.message);
-  if (!authData.user) throw new Error('Authentication failed. Please try again.');
+  if (!authData.user) throw new Error('Authentication failed.');
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
@@ -74,18 +72,15 @@ export async function signInWithEmail(
     .eq('id', authData.user.id)
     .maybeSingle();
 
-  if (profileError) {
-    console.error('[supabase] Profile fetch error:', profileError);
-    throw new Error(`Could not load your profile: ${profileError.message}. Contact your administrator.`);
-  }
-  if (!profile) throw new Error('No profile found for this account. Contact your administrator.');
-  if (!profile.is_active) throw new Error('Your account has been deactivated. Contact your administrator.');
+  if (profileError) throw new Error(profileError.message);
+  if (!profile) throw new Error('No profile found.');
+  if (!profile.is_active) throw new Error('Account is deactivated.');
 
   return profile as UserProfile;
 }
 
 /**
- * Sign out the current user.
+ * Sign out
  */
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
@@ -93,7 +88,7 @@ export async function signOut(): Promise<void> {
 }
 
 /**
- * Get the currently authenticated user's profile.
+ * Get current user profile
  */
 export async function getCurrentProfile(): Promise<UserProfile | null> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -109,30 +104,28 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
 }
 
 /**
- * Returns a guaranteed fresh access token by calling refreshSession() first.
- * Falls back to the cached session if refresh fails for a non-expiry reason.
- * Throws if the user is not authenticated at all.
+ * ✅ FIXED TOKEN FUNCTION (IMPORTANT)
  */
 export async function getAuthToken(): Promise<string> {
-  const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
-  if (refreshed?.session?.access_token) return refreshed.session.access_token;
+  const { data: { session } } = await supabase.auth.getSession();
 
-  // If refresh failed, try the existing (possibly still-valid) cached session
-  if (refreshErr) {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.access_token) return session.access_token;
-    throw new Error('Session expired. Please log in again.');
+  if (!session || !session.access_token) {
+    console.error("❌ No session found");
+    throw new Error("Not authenticated. Please log in again.");
   }
 
-  throw new Error('Not authenticated. Please log in again.');
+  console.log("✅ SESSION TOKEN:", session.access_token);
+
+  return session.access_token;
 }
 
 /**
- * Send a password reset email.
+ * Password reset
  */
 export async function sendPasswordReset(email: string): Promise<void> {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${window.location.origin}/login`,
   });
+
   if (error) throw new Error(error.message);
 }
