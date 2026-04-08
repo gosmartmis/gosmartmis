@@ -1,12 +1,30 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+// @ts-ignore: Deno Edge Functions support URL imports at runtime; TS in the web app workspace cannot resolve this module.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { generateDefaultPassword, sendWelcomeEmailViaResend } from '../_shared/onboarding.ts'
+
+declare const Deno: {
+  env: { get: (key: string) => string | undefined }
+  serve: (handler: (req: Request) => Response | Promise<Response>) => void
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req) => {
+async function ensureNoCrossTenantReassignment(adminClient: any, userId: string, schoolId: string) {
+  const { data: existingProfile } = await adminClient
+    .from('profiles')
+    .select('school_id')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (existingProfile?.school_id && existingProfile.school_id !== schoolId) {
+    throw new Error('Cross-tenant user reassignment is blocked')
+  }
+}
+
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
@@ -45,9 +63,7 @@ serve(async (req) => {
     }
 
     // ── 1. Create director auth account ──────────────────────────────────────
-    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-    const rand = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-    const tempPassword = `GoSmart@${rand}`
+    const tempPassword = generateDefaultPassword()
 
     let userId: string | null = null
     let userAlreadyExisted = false
@@ -63,7 +79,7 @@ serve(async (req) => {
       if (authError.message.includes('already been registered') || authError.message.includes('already exists')) {
         // User exists — look them up
         const { data: existingUsers } = await adminClient.auth.admin.listUsers()
-        const existing = existingUsers?.users?.find((u) => u.email === director_email)
+        const existing = existingUsers?.users?.find((u: any) => u.email === director_email)
         userId = existing?.id ?? null
         userAlreadyExisted = true
       } else {
@@ -75,14 +91,32 @@ serve(async (req) => {
       userId = authData.user?.id ?? null
     }
 
+    if (userId && userAlreadyExisted) {
+      const { error: forceResetError } = await adminClient.auth.admin.updateUserById(userId, { password: tempPassword })
+      if (forceResetError) {
+        return new Response(JSON.stringify({ error: forceResetError.message }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+    }
+
     // ── 2. Upsert profile record ──────────────────────────────────────────────
     if (userId) {
+      try {
+        await ensureNoCrossTenantReassignment(adminClient, userId, school_id)
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err?.message || 'Cross-tenant user reassignment is blocked' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
       await adminClient.from('profiles').upsert({
         id: userId,
         school_id,
         full_name: director_name || 'School Director',
         email: director_email,
         role: 'director',
+        must_change_password: true,
       }, { onConflict: 'id' })
     }
 
@@ -193,26 +227,19 @@ serve(async (req) => {
 </body>
 </html>`
 
-        const emailRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: 'GoSmart MIS <onboarding@gosmartmis.rw>',
-            to: [director_email],
-            subject: `Welcome to GoSmart MIS — ${school_name} is ready!`,
-            html,
-          })
+        const emailResult = await sendWelcomeEmailViaResend({
+          apiKey: resendApiKey,
+          to: director_email,
+          fullName: director_name || 'School Director',
+          roleLabel: 'director',
+          schoolName: school_name || 'School',
+          loginUrl,
+          loginCredential: director_email,
+          tempPassword,
+          resetLink,
         })
-
-        if (emailRes.ok) {
-          emailSent = true
-        } else {
-          const errBody = await emailRes.text()
-          emailError = `Resend API error: ${errBody}`
-        }
+        emailSent = emailResult.sent
+        emailError = emailResult.error || ''
       }
     }
 
@@ -221,7 +248,7 @@ serve(async (req) => {
       user_created: !userAlreadyExisted,
       user_already_existed: userAlreadyExisted,
       user_id: userId,
-      temp_password: userAlreadyExisted ? null : tempPassword,
+      temp_password: tempPassword,
       reset_link: resetLink,
       email_sent: emailSent,
       email_error: emailError || null,
@@ -229,8 +256,8 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error: any) {
+    return new Response(JSON.stringify({ error: error?.message || 'Unexpected error' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }

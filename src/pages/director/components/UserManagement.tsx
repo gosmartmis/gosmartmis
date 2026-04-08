@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase, getAuthToken } from '../../../lib/supabase';
+import { Fragment, useState, useEffect, useCallback } from 'react';
+import { supabase, getAuthToken, EDGE_FUNCTIONS_BASE_URL, SUPABASE_ANON_KEY } from '../../../lib/supabase';
 import BulkImportModal from './BulkImportModal';
 
 interface SchoolUser {
@@ -116,10 +116,14 @@ export default function UserManagement() {
 
   const callEdge = async (token: string, payload: object) => {
     const res = await fetch(
-      `${import.meta.env.VITE_PUBLIC_SUPABASE_URL}/functions/v1/manage-school-user`,
+      `${EDGE_FUNCTIONS_BASE_URL}/manage-school-user`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
         body: JSON.stringify(payload),
       }
     );
@@ -345,14 +349,16 @@ export default function UserManagement() {
       </div>
 
       {/* Create Account Banner - visible results */}
-      {Object.values(results).filter((r) => r.userId.startsWith('create_') || !users.find((u) => u.id === r.userId)).map((res) => (
-        <div key={res.userId} className={`rounded-xl border p-4 space-y-3 ${res.success ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+      {Object.entries(results)
+        .filter(([key, r]) => key.startsWith('create_') || !users.find((u) => u.id === r.userId))
+        .map(([resultKey, res]) => (
+        <div key={resultKey} className={`rounded-xl border p-4 space-y-3 ${res.success ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <i className={`${res.success ? 'ri-checkbox-circle-fill text-emerald-600' : 'ri-error-warning-fill text-red-600'}`}></i>
               <p className={`text-sm font-semibold ${res.success ? 'text-emerald-800' : 'text-red-700'}`}>{res.message}</p>
             </div>
-            <button onClick={() => setResults((prev) => { const n = { ...prev }; delete n[res.userId]; return n; })} className="text-gray-400 hover:text-gray-600 cursor-pointer"><i className="ri-close-line"></i></button>
+            <button onClick={() => setResults((prev) => { const n = { ...prev }; delete n[resultKey]; return n; })} className="text-gray-400 hover:text-gray-600 cursor-pointer"><i className="ri-close-line"></i></button>
           </div>
           {res.temp_password && (
             <div className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg p-2.5">
@@ -423,8 +429,8 @@ export default function UserManagement() {
                   const isBusy = isResetting || isToggling || isDeleting;
 
                   return (
-                    <>
-                      <tr key={u.id} className="hover:bg-gray-50/60 transition-colors">
+                    <Fragment key={u.id}>
+                      <tr className="hover:bg-gray-50/60 transition-colors">
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
                             {u.avatar_url ? (
@@ -524,7 +530,7 @@ export default function UserManagement() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>

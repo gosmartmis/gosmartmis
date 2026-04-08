@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, clearAllAuthStorage, type UserProfile } from '../lib/supabase';
 
+const normalizeRole = (role?: string | null) => {
+  if (!role) return '';
+  return role === 'school-manager' ? 'school_manager' : role;
+};
+
 export function useAuth() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -17,7 +22,7 @@ export function useAuth() {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESH_FAILURE') {
+      if (event === 'SIGNED_OUT') {
         clearAllAuthStorage();
         setProfile(null);
         setLoading(false);
@@ -41,6 +46,8 @@ export function useAuth() {
         phone: null,
         avatar_url: cachedAvatar ?? null,
         is_active: true,
+        must_change_password: false,
+        registration_number: null,
         created_at: '',
         updated_at: '',
       });
@@ -65,7 +72,7 @@ export function useAuth() {
             setProfile(data as UserProfile);
             sessionStorage.setItem('user_name', data.full_name);
             sessionStorage.setItem('user_email', data.email);
-            sessionStorage.setItem('user_role', data.role);
+            sessionStorage.setItem('user_role', normalizeRole(data.role));
             if (data.school_id) sessionStorage.setItem('user_school_id', data.school_id);
             if (data.avatar_url) sessionStorage.setItem('user_avatar_url', data.avatar_url);
           }

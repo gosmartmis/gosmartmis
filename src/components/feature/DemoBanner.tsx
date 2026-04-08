@@ -19,7 +19,7 @@ export default function DemoBanner({ role }: DemoBannerProps) {
       registrar: 'demo.registrar@gosmartmis.rw',
       accountant: 'demo.accountant@gosmartmis.rw',
       dean: 'demo.dean@gosmartmis.rw',
-      'school-manager': 'demo.manager@gosmartmis.rw',
+      school_manager: 'demo.manager@gosmartmis.rw',
     };
     return map[r] || 'demo@gosmartmis.rw';
   };

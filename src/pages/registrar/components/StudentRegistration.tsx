@@ -8,6 +8,7 @@ import CsvImportModal from './CsvImportModal';
 import { notifyStudentEnrolled } from '../../../utils/notificationService';
 
 interface AccountResult {
+  user_id?: string;
   registration_number: string;
   temp_password: string;
   login_credential: string;
@@ -100,7 +101,7 @@ export default function StudentRegistration() {
       const fullName = `${formData.firstName} ${formData.lastName}`.trim();
 
       // 1. Insert student record
-      const { error: insertError } = await supabase
+      const { data: insertedStudent, error: insertError } = await supabase
         .from('students')
         .insert({
           school_id: schoolInfo.id,
@@ -117,7 +118,9 @@ export default function StudentRegistration() {
           previous_school: formData.previousSchool || null,
           enrollment_date: formData.admissionDate,
           status: 'active',
-        });
+        })
+        .select('id')
+        .maybeSingle();
 
       if (insertError) throw insertError;
 
@@ -151,7 +154,16 @@ export default function StudentRegistration() {
           // Account creation failed but student record was saved — show partial success
           setError(`Student registered, but account creation failed: ${json.error ?? 'Unknown error'}. You can create their account later via User Management.`);
         } else if (json.registration_number) {
+          if (insertedStudent?.id && json.user_id) {
+            await supabase
+              .from('students')
+              .update({ profile_id: json.user_id })
+              .eq('id', insertedStudent.id)
+              .eq('school_id', schoolInfo.id);
+          }
+
           setAccountResult({
+            user_id: json.user_id,
             registration_number: json.registration_number,
             temp_password: json.temp_password ?? '',
             login_credential: json.login_credential ?? json.registration_number,
@@ -300,6 +312,8 @@ export default function StudentRegistration() {
         {showImport && schoolInfo?.id && (
           <CsvImportModal
             schoolId={schoolInfo.id}
+            schoolName={schoolInfo.name}
+            schoolSlug={schoolSlug}
             defaultTab="students"
             onClose={() => setShowImport(false)}
             onImported={() => {}}
@@ -486,7 +500,7 @@ export default function StudentRegistration() {
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all text-sm">
                   <option value="">Select Year</option>
                   {academicYears?.map((year) => (
-                    <option key={year.id} value={year.id}>{year.year}</option>
+                    <option key={year.id} value={year.id}>{year.name}</option>
                   ))}
                 </select>
               </div>
@@ -633,6 +647,8 @@ export default function StudentRegistration() {
       {showImport && schoolInfo?.id && (
         <CsvImportModal
           schoolId={schoolInfo.id}
+            schoolName={schoolInfo.name}
+            schoolSlug={schoolSlug}
           defaultTab="students"
           onClose={() => setShowImport(false)}
           onImported={() => {}}

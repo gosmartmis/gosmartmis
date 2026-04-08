@@ -25,7 +25,7 @@ const TEST_USERS = [
     email: "demo.manager@gosmartmis.rw",
     password: DEMO_PASSWORD,
     full_name: "Mr. Eric Nkurunziza",
-    role: "school-manager",
+    role: "school_manager",
     school_id: SCHOOL_ID,
     phone: "+250788000008",
   },

@@ -104,7 +104,7 @@ const routes: RouteObject[] = [
       {
         path: 'school-manager',
         element: (
-          <ProtectedRoute allowedRoles={['school-manager']}>
+          <ProtectedRoute allowedRoles={['school_manager']}>
             <SchoolManagerPage />
           </ProtectedRoute>
         ),

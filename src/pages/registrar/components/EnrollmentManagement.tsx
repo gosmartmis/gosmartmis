@@ -11,8 +11,27 @@ export default function EnrollmentManagement() {
   const [pendingStudents, setPendingStudents] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [regNumberMap, setRegNumberMap] = useState<Record<string, string>>({}); // profile_id → reg_number
+  const [editingStudent, setEditingStudent] = useState<any | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileForm, setProfileForm] = useState({
+    full_name: '',
+    date_of_birth: '',
+    gender: '',
+    national_id: '',
+    blood_group: '',
+    address: '',
+    parent_name: '',
+    parent_phone: '',
+    parent_email: '',
+    class_id: '',
+    previous_school: '',
+    enrollment_date: '',
+    status: 'active',
+  });
   
-  const { schoolInfo } = useTenant();
+  const { schoolRecord } = useTenant();
+  const schoolInfo = schoolRecord ? { id: schoolRecord.id, name: schoolRecord.name } : null;
   const { classes, loading: classesLoading } = useClasses(schoolInfo?.id || null);
 
   useEffect(() => {
@@ -106,10 +125,12 @@ export default function EnrollmentManagement() {
 
   const handleApprove = async (studentId: string) => {
     try {
+      if (!schoolInfo?.id) return;
       const { error } = await supabase
         .from('students')
         .update({ status: 'active' })
-        .eq('id', studentId);
+        .eq('id', studentId)
+        .eq('school_id', schoolInfo.id);
 
       if (error) throw error;
 
@@ -124,10 +145,12 @@ export default function EnrollmentManagement() {
 
   const handleReject = async (studentId: string) => {
     try {
+      if (!schoolInfo?.id) return;
       const { error } = await supabase
         .from('students')
         .update({ status: 'rejected' })
-        .eq('id', studentId);
+        .eq('id', studentId)
+        .eq('school_id', schoolInfo.id);
 
       if (error) throw error;
 
@@ -160,6 +183,71 @@ export default function EnrollmentManagement() {
       || (student.classes?.name || '').toLowerCase().includes(query)
       || regNum.includes(query);
   });
+
+  const openProfileEditor = (student: any) => {
+    setEditingStudent(student);
+    setProfileError(null);
+    setProfileForm({
+      full_name: student.full_name || '',
+      date_of_birth: student.date_of_birth || '',
+      gender: student.gender || '',
+      national_id: student.national_id || '',
+      blood_group: student.blood_group || '',
+      address: student.address || '',
+      parent_name: student.parent_name || '',
+      parent_phone: student.parent_phone || '',
+      parent_email: student.parent_email || '',
+      class_id: student.class_id || '',
+      previous_school: student.previous_school || '',
+      enrollment_date: student.enrollment_date || '',
+      status: student.status || 'active',
+    });
+  };
+
+  const saveProfile = async () => {
+    if (!editingStudent?.id || !schoolInfo?.id) return;
+    if (!profileForm.full_name.trim()) {
+      setProfileError('Student full name is required.');
+      return;
+    }
+    if (!profileForm.class_id) {
+      setProfileError('Class is required.');
+      return;
+    }
+
+    try {
+      setSavingProfile(true);
+      setProfileError(null);
+      const { error } = await supabase
+        .from('students')
+        .update({
+          full_name: profileForm.full_name.trim(),
+          date_of_birth: profileForm.date_of_birth || null,
+          gender: profileForm.gender || null,
+          national_id: profileForm.national_id || null,
+          blood_group: profileForm.blood_group || null,
+          address: profileForm.address || null,
+          parent_name: profileForm.parent_name || null,
+          parent_phone: profileForm.parent_phone || null,
+          parent_email: profileForm.parent_email || null,
+          class_id: profileForm.class_id,
+          previous_school: profileForm.previous_school || null,
+          enrollment_date: profileForm.enrollment_date || null,
+          status: profileForm.status || 'active',
+        })
+        .eq('id', editingStudent.id)
+        .eq('school_id', schoolInfo.id);
+      if (error) throw error;
+
+      setEditingStudent(null);
+      await fetchStudents();
+      await fetchPendingEnrollments();
+    } catch (err: any) {
+      setProfileError(err?.message || 'Failed to update student profile');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   if (classesLoading || loading) {
     return (
@@ -295,7 +383,11 @@ export default function EnrollmentManagement() {
                     }`}>
                       {student.status || 'Active'}
                     </span>
-                    <button className="text-teal-600 hover:text-teal-700 w-8 h-8 flex items-center justify-center">
+                    <button
+                      onClick={() => openProfileEditor(student)}
+                      className="text-teal-600 hover:text-teal-700 w-8 h-8 flex items-center justify-center"
+                      title="Complete profile"
+                    >
                       <i className="ri-more-2-fill"></i>
                     </button>
                   </div>
@@ -390,6 +482,63 @@ export default function EnrollmentManagement() {
           )}
         </div>
       </div>
+
+      {editingStudent && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Complete Student Profile</h3>
+                <p className="text-xs text-gray-500 mt-1">Update student details and class assignment</p>
+              </div>
+              <button onClick={() => setEditingStudent(null)} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700">
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {profileError && (
+                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{profileError}</div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input value={profileForm.full_name} onChange={(e) => setProfileForm((p) => ({ ...p, full_name: e.target.value }))} placeholder="Full name" className="px-3 py-2 border border-gray-300 rounded-lg" />
+                <select value={profileForm.class_id} onChange={(e) => setProfileForm((p) => ({ ...p, class_id: e.target.value }))} className="px-3 py-2 border border-gray-300 rounded-lg">
+                  <option value="">Select class</option>
+                  {classes.map((cls) => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                </select>
+                <input type="date" value={profileForm.date_of_birth || ''} onChange={(e) => setProfileForm((p) => ({ ...p, date_of_birth: e.target.value }))} className="px-3 py-2 border border-gray-300 rounded-lg" />
+                <select value={profileForm.gender || ''} onChange={(e) => setProfileForm((p) => ({ ...p, gender: e.target.value }))} className="px-3 py-2 border border-gray-300 rounded-lg">
+                  <option value="">Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+                <input value={profileForm.national_id || ''} onChange={(e) => setProfileForm((p) => ({ ...p, national_id: e.target.value }))} placeholder="National ID" className="px-3 py-2 border border-gray-300 rounded-lg" />
+                <input value={profileForm.blood_group || ''} onChange={(e) => setProfileForm((p) => ({ ...p, blood_group: e.target.value }))} placeholder="Blood group" className="px-3 py-2 border border-gray-300 rounded-lg" />
+                <input value={profileForm.parent_name || ''} onChange={(e) => setProfileForm((p) => ({ ...p, parent_name: e.target.value }))} placeholder="Parent/Guardian name" className="px-3 py-2 border border-gray-300 rounded-lg" />
+                <input value={profileForm.parent_phone || ''} onChange={(e) => setProfileForm((p) => ({ ...p, parent_phone: e.target.value }))} placeholder="Parent/Guardian phone" className="px-3 py-2 border border-gray-300 rounded-lg" />
+                <input value={profileForm.parent_email || ''} onChange={(e) => setProfileForm((p) => ({ ...p, parent_email: e.target.value }))} placeholder="Parent/Guardian email" className="px-3 py-2 border border-gray-300 rounded-lg" />
+                <input value={profileForm.previous_school || ''} onChange={(e) => setProfileForm((p) => ({ ...p, previous_school: e.target.value }))} placeholder="Previous school" className="px-3 py-2 border border-gray-300 rounded-lg" />
+                <input type="date" value={profileForm.enrollment_date || ''} onChange={(e) => setProfileForm((p) => ({ ...p, enrollment_date: e.target.value }))} className="px-3 py-2 border border-gray-300 rounded-lg" />
+                <select value={profileForm.status || 'active'} onChange={(e) => setProfileForm((p) => ({ ...p, status: e.target.value }))} className="px-3 py-2 border border-gray-300 rounded-lg">
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+
+              <textarea value={profileForm.address || ''} onChange={(e) => setProfileForm((p) => ({ ...p, address: e.target.value }))} placeholder="Address" className="w-full px-3 py-2 border border-gray-300 rounded-lg" rows={3} />
+
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setEditingStudent(null)} className="px-4 py-2 border border-gray-300 rounded-lg">Cancel</button>
+                <button onClick={saveProfile} disabled={savingProfile} className="px-4 py-2 bg-teal-600 text-white rounded-lg disabled:opacity-60">
+                  {savingProfile ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

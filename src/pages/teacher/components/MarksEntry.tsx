@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { useTeacherAssignments } from '../../../hooks/useTeacherAssignments';
-import { useSubjects } from '../../../hooks/useSubjects';
 import { useTerms } from '../../../hooks/useTerms';
 import { useMarks } from '../../../hooks/useMarks';
 import { supabase } from '../../../lib/supabase';
@@ -29,7 +28,7 @@ function getGrade(score: number): string {
 }
 
 export default function MarksEntry() {
-  const { user } = useAuth();
+  const { profile } = useAuth();
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('');
@@ -39,7 +38,7 @@ export default function MarksEntry() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const { assignments, loading: classesLoading } = useTeacherAssignments(user?.school_id, user?.id);
+  const { assignments, loading: classesLoading } = useTeacherAssignments(profile?.school_id, profile?.id);
 
   // Derive unique classes from assignments
   const classes = assignments.reduce<{ id: string; name: string }[]>((acc, a) => {
@@ -48,18 +47,26 @@ export default function MarksEntry() {
     }
     return acc;
   }, []);
-  const { subjects, loading: subjectsLoading } = useSubjects(user?.school_id, selectedClass);
-  const { terms, loading: termsLoading } = useTerms(user?.school_id);
+  const subjects = assignments
+    .filter((a) => a.class_id === selectedClass)
+    .reduce<{ id: string; name: string }[]>((acc, a) => {
+      if (!acc.find((s) => s.id === a.subject_id)) {
+        acc.push({ id: a.subject_id, name: a.subject_name || 'Unknown' });
+      }
+      return acc;
+    }, []);
+  const { terms, loading: termsLoading } = useTerms(profile?.school_id);
   const { marks, loading: marksLoading, refetch: refetchMarks } = useMarks({
-    schoolId: user?.school_id || null,
+    schoolId: profile?.school_id || null,
     classId: selectedClass || undefined,
     subjectId: selectedSubject || undefined,
     termId: selectedTerm || undefined,
+    teacherId: profile?.id || undefined,
   });
 
   // Load students when class is selected
   useEffect(() => {
-    if (!selectedClass || !user?.school_id) {
+    if (!selectedClass || !profile?.school_id) {
       setStudents([]);
       return;
     }
@@ -67,10 +74,17 @@ export default function MarksEntry() {
     const loadStudents = async () => {
       setLoading(true);
       try {
+        const isAssigned = assignments.some(
+          (a) => a.class_id === selectedClass
+        );
+        if (!isAssigned) {
+          throw new Error('Access denied: class is not assigned to you');
+        }
+
         const { data, error } = await supabase
           .from('students')
           .select('id, student_id, full_name')
-          .eq('school_id', user.school_id)
+          .eq('school_id', profile.school_id)
           .eq('class_id', selectedClass)
           .order('full_name');
 
@@ -78,14 +92,14 @@ export default function MarksEntry() {
         setStudents(data || []);
       } catch (error) {
         console.error('Error loading students:', error);
-        setErrorMessage('Failed to load students');
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to load students');
       } finally {
         setLoading(false);
       }
     };
 
     loadStudents();
-  }, [selectedClass, user?.school_id]);
+  }, [selectedClass, profile?.school_id, assignments]);
 
   // Merge marks data with students when marks are loaded
   useEffect(() => {
@@ -138,12 +152,19 @@ export default function MarksEntry() {
     setSuccessMessage('');
 
     try {
+      const isAssigned = assignments.some(
+        (a) => a.class_id === selectedClass && a.subject_id === selectedSubject
+      );
+      if (!isAssigned) {
+        throw new Error('Access denied: subject is not assigned to you for this class');
+      }
+
       const marksToSave = students
         .filter(s => s.marks && (s.marks.cat > 0 || s.marks.exam > 0))
         .map(student => {
           const totalScore = student.marks!.cat + student.marks!.exam;
           const base: Record<string, unknown> = {
-            school_id: user?.school_id,
+            school_id: profile?.school_id,
             student_id: student.id,
             class_id: selectedClass,
             subject_id: selectedSubject,
@@ -152,7 +173,7 @@ export default function MarksEntry() {
             max_score: 100,
             percentage: totalScore,
             grade: getGrade(totalScore),
-            teacher_id: user?.id,
+            teacher_id: profile?.id,
             status: 'pending',
             submitted_at: new Date().toISOString(),
           };
@@ -174,7 +195,12 @@ export default function MarksEntry() {
         if (insertErr) throw insertErr;
       }
       for (const { id, ...data } of toUpdate) {
-        const { error: updateErr } = await supabase.from('marks').update(data).eq('id', id as string);
+        const { error: updateErr } = await supabase
+          .from('marks')
+          .update(data)
+          .eq('id', id as string)
+          .eq('school_id', profile?.school_id)
+          .eq('teacher_id', profile?.id);
         if (updateErr) throw updateErr;
       }
 
@@ -182,12 +208,12 @@ export default function MarksEntry() {
       refetchMarks();
 
       // Fire notification to Dean / Director / School Manager
-      if (user?.school_id) {
+      if (profile?.school_id) {
         const resolvedClass = classes.find((c) => c.id === selectedClass);
         const resolvedSubject = subjects.find((s) => s.id === selectedSubject);
         notifyMarksSubmitted(
-          user.school_id,
-          user.full_name || 'A teacher',
+          profile.school_id,
+          profile.full_name || 'A teacher',
           resolvedClass?.name || 'Unknown class',
           resolvedSubject?.name || 'Unknown subject',
           marksToSave.length,
@@ -197,7 +223,7 @@ export default function MarksEntry() {
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
       console.error('Error saving marks:', error);
-      setErrorMessage('Failed to save marks. Please try again.');
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save marks. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -250,7 +276,7 @@ export default function MarksEntry() {
             <select
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              disabled={!selectedClass || subjectsLoading}
+              disabled={!selectedClass}
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-smooth disabled:bg-gray-50 disabled:cursor-not-allowed"
             >
               <option value="">Choose a subject</option>

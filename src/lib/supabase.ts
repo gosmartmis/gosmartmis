@@ -1,15 +1,43 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const supabaseUrl =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) ||
+  (import.meta.env.VITE_PUBLIC_SUPABASE_URL as string | undefined);
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+const supabaseAnonKey =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ||
+  (import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string | undefined);
+
+if (!supabaseUrl) {
+  throw new Error('Missing Supabase URL: set VITE_SUPABASE_URL (or VITE_PUBLIC_SUPABASE_URL).');
+}
+
+if (!supabaseAnonKey) {
+  throw new Error('Missing Supabase anon key: set VITE_SUPABASE_ANON_KEY (or VITE_PUBLIC_SUPABASE_ANON_KEY).');
+}
+
+export const EDGE_FUNCTIONS_BASE_URL = `${supabaseUrl}/functions/v1`;
+export const SUPABASE_ANON_KEY = supabaseAnonKey;
+
+type SupabaseSingleton = {
+  supabase?: SupabaseClient;
+};
+
+const globalForSupabase = globalThis as typeof globalThis & SupabaseSingleton;
+
+export const supabase =
+  globalForSupabase.supabase ??
+  createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  });
+
+if (!globalForSupabase.supabase) {
+  globalForSupabase.supabase = supabase;
+}
 
 /**
  * Clear all auth-related storage (localStorage + sessionStorage).
@@ -28,9 +56,11 @@ export function clearAllAuthStorage() {
   }
 }
 
-// Listen for auth failures
+// Listen for auth/session invalidation events
 supabase.auth.onAuthStateChange((event) => {
-  if (event === 'TOKEN_REFRESH_FAILURE' || event === 'SIGNED_OUT') {
+  // 'TOKEN_REFRESH_FAILURE' is not a valid AuthChangeEvent in supabase-js.
+  // A failed refresh ultimately results in SIGNED_OUT, so handle that event.
+  if (event === 'SIGNED_OUT') {
     clearAllAuthStorage();
   }
 });
@@ -107,16 +137,74 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
  * ✅ FIXED TOKEN FUNCTION (IMPORTANT)
  */
 export async function getAuthToken(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session }, error } = await supabase.auth.getSession();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const isExpired = session?.expires_at
+    ? session.expires_at * 1000 <= Date.now() + 30_000
+    : false;
+
+  if (isExpired) {
+    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshed.session?.access_token) {
+      throw new Error(refreshError?.message || 'Session expired. Please log in again.');
+    }
+
+    return refreshed.session.access_token;
+  }
 
   if (!session || !session.access_token) {
-    console.error("❌ No session found");
     throw new Error("Not authenticated. Please log in again.");
   }
 
-  console.log("✅ SESSION TOKEN:", session.access_token);
-
   return session.access_token;
+}
+
+function isUnauthorizedEdgeError(error: unknown): boolean {
+  const err = error as {
+    context?: { status?: number };
+    status?: number;
+    message?: string;
+  };
+
+  return (
+    err?.context?.status === 401 ||
+    err?.status === 401 ||
+    /unauthorized|401/i.test(err?.message ?? '')
+  );
+}
+
+/**
+ * Invoke an authenticated edge function with one automatic retry on 401.
+ */
+export async function invokeAuthedEdgeFunction<T = unknown>(
+  functionName: string,
+  payload: unknown
+): Promise<T> {
+  // Ensures we have a valid access token first.
+  await getAuthToken();
+
+  const invoke = () => supabase.functions.invoke(functionName, { body: payload });
+
+  let { data, error } = await invoke();
+
+  if (error && isUnauthorizedEdgeError(error)) {
+    const { error: refreshError } = await supabase.auth.refreshSession();
+    if (!refreshError) {
+      ({ data, error } = await invoke());
+    }
+  }
+
+  if (error) {
+    const edgeError = error as { context?: { status?: number }; message?: string };
+    const statusSuffix = edgeError?.context?.status ? ` (HTTP ${edgeError.context.status})` : '';
+    throw new Error((edgeError?.message || 'Edge function request failed') + statusSuffix);
+  }
+
+  return data as T;
 }
 
 /**

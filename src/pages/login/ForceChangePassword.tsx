@@ -30,7 +30,7 @@ const ROLE_META: Record<string, { label: string; gradient: string; icon: string 
   dean:       { label: 'Dean',        gradient: 'from-violet-500 to-purple-600',  icon: 'ri-user-star-line' },
   registrar:  { label: 'Registrar',   gradient: 'from-teal-500 to-emerald-600',   icon: 'ri-file-list-line' },
   accountant: { label: 'Accountant',  gradient: 'from-amber-500 to-yellow-600',   icon: 'ri-money-dollar-circle-line' },
-  'school-manager': { label: 'School Manager', gradient: 'from-slate-500 to-gray-600', icon: 'ri-settings-3-line' },
+  school_manager: { label: 'School Manager', gradient: 'from-slate-500 to-gray-600', icon: 'ri-settings-3-line' },
 };
 
 export default function ForceChangePassword({ userFullName, userRole, userId, onSuccess }: Props) {
@@ -43,7 +43,8 @@ export default function ForceChangePassword({ userFullName, userRole, userId, on
 
   const strength = getStrength(newPassword);
   const firstName = userFullName?.split(' ')[0] || 'there';
-  const roleMeta = ROLE_META[userRole] || { label: userRole, gradient: 'from-teal-500 to-emerald-600', icon: 'ri-user-line' };
+  const normalizedRole = userRole === 'school-manager' ? 'school_manager' : userRole;
+  const roleMeta = ROLE_META[normalizedRole] || { label: normalizedRole, gradient: 'from-teal-500 to-emerald-600', icon: 'ri-user-line' };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

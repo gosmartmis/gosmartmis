@@ -8,12 +8,12 @@ interface Student {
   id: string;
   student_id: string;
   full_name: string;
-  status?: 'present' | 'absent' | 'late';
+  status?: 'present' | 'absent' | 'late' | 'excused';
   remarks?: string;
 }
 
 export default function Attendance() {
-  const { user } = useAuth();
+  const { profile } = useAuth();
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -22,7 +22,7 @@ export default function Attendance() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const { assignments, loading: classesLoading } = useTeacherAssignments(user?.school_id, user?.id);
+  const { assignments, loading: classesLoading } = useTeacherAssignments(profile?.school_id, profile?.id);
 
   // Derive a unique list of classes the teacher is assigned to
   const classes = useMemo(() => {
@@ -36,14 +36,14 @@ export default function Attendance() {
       .map(a => ({ id: a.class_id, name: a.class_name || 'Unknown' }));
   }, [assignments]);
   const { attendance, loading: attendanceLoading, refetch: refetchAttendance } = useAttendance({
-    schoolId: user?.school_id ?? null,
+    schoolId: profile?.school_id ?? null,
     classId: selectedClass || undefined,
     date: selectedDate || undefined,
   });
 
   // Load students when class is selected
   useEffect(() => {
-    if (!selectedClass || !user?.school_id) {
+    if (!selectedClass || !profile?.school_id) {
       setStudents([]);
       return;
     }
@@ -51,10 +51,15 @@ export default function Attendance() {
     const loadStudents = async () => {
       setLoading(true);
       try {
+        const isAssigned = assignments.some((a) => a.class_id === selectedClass);
+        if (!isAssigned) {
+          throw new Error('Access denied: class is not assigned to you');
+        }
+
         const { data, error } = await supabase
           .from('students')
           .select('id, student_id, full_name')
-          .eq('school_id', user.school_id)
+          .eq('school_id', profile.school_id)
           .eq('class_id', selectedClass)
           .order('full_name');
 
@@ -62,14 +67,14 @@ export default function Attendance() {
         setStudents(data || []);
       } catch (error) {
         console.error('Error loading students:', error);
-        setErrorMessage('Failed to load students');
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to load students');
       } finally {
         setLoading(false);
       }
     };
 
     loadStudents();
-  }, [selectedClass, user?.school_id]);
+  }, [selectedClass, profile?.school_id, assignments]);
 
   // Merge attendance data with students when attendance is loaded
   useEffect(() => {
@@ -120,23 +125,29 @@ export default function Attendance() {
     setSuccessMessage('');
 
     try {
+      const isAssigned = assignments.some((a) => a.class_id === selectedClass);
+      if (!isAssigned) {
+        throw new Error('Access denied: class is not assigned to you');
+      }
+
       const attendanceRecords = students.map(student => ({
-        school_id: user?.school_id,
+        school_id: profile?.school_id,
         student_id: student.id,
         class_id: selectedClass,
         date: selectedDate,
         status: student.status!,
         remarks: student.remarks || null,
-        marked_by: user?.id
+        marked_by: profile?.id
       }));
 
       // Delete existing records for this class and date
       await supabase
         .from('attendance')
         .delete()
-        .eq('school_id', user?.school_id)
+        .eq('school_id', profile?.school_id)
         .eq('class_id', selectedClass)
-        .eq('date', selectedDate);
+        .eq('date', selectedDate)
+        .eq('marked_by', profile?.id);
 
       // Insert new records
       const { error } = await supabase
@@ -151,7 +162,7 @@ export default function Attendance() {
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
       console.error('Error saving attendance:', error);
-      setErrorMessage('Failed to save attendance. Please try again.');
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save attendance. Please try again.');
     } finally {
       setSaving(false);
     }

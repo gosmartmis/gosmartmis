@@ -154,11 +154,24 @@ export const useTeacherClasses = (
   }, [schoolId, teacherId]);
 
   const fetchStudentsByClass = async (classId: string) => {
-    if (!schoolId) return;
+    if (!schoolId || !teacherId) return;
 
     try {
       setLoading(true);
       setError(null);
+
+      // Guard: teacher can only access students in assigned classes
+      const { count: assignmentCount, error: assignmentError } = await supabase
+        .from('teacher_assignments')
+        .select('*', { count: 'exact', head: true })
+        .eq('school_id', schoolId)
+        .eq('teacher_id', teacherId)
+        .eq('class_id', classId);
+
+      if (assignmentError) throw assignmentError;
+      if (!assignmentCount) {
+        throw new Error('Access denied: class is not assigned to you');
+      }
 
       // Get students in the class
       const { data: studentsData, error: studentsError } = await supabase
@@ -183,6 +196,7 @@ export const useTeacherClasses = (
           const { data: marksData } = await supabase
             .from('marks')
             .select('score')
+            .eq('school_id', schoolId)
             .eq('student_id', student.id)
             .eq('status', 'approved');
 
@@ -194,6 +208,7 @@ export const useTeacherClasses = (
           const { data: attendanceData } = await supabase
             .from('attendance')
             .select('status')
+            .eq('school_id', schoolId)
             .eq('student_id', student.id);
 
           const attendanceRate = attendanceData && attendanceData.length > 0
@@ -202,7 +217,7 @@ export const useTeacherClasses = (
 
           return {
             id: student.id,
-            student_id: student.id,
+            student_id: (student as any).student_id,
             name: student.full_name || 'Unknown',
             roll_no: (student as any).student_id || 'N/A',
             parent_name: (student as any).parent_name || 'N/A',

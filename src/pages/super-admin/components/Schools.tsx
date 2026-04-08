@@ -3,7 +3,7 @@ import { useSchools, School } from '../../../hooks/useSchools';
 import SchoolFormModal from './SchoolFormModal';
 import DirectorManageModal from './DirectorManageModal';
 import { getSchoolUrl } from '../../../utils/subdomain';
-import { supabase, getAuthToken } from '../../../lib/supabase';
+import { supabase, getAuthToken, EDGE_FUNCTIONS_BASE_URL, SUPABASE_ANON_KEY } from '../../../lib/supabase';
 
 type NotifType = 'success' | 'error';
 
@@ -158,51 +158,68 @@ export default function Schools() {
       showNotif('success', 'School created successfully!');
 
       if (data.create_director_account && data.director_email && result.data?.id) {
-        setOnboarding(true);
-        try {
-          const token = await getAuthToken();
-          const res = await fetch(
-            `${import.meta.env.VITE_PUBLIC_SUPABASE_URL}/functions/v1/onboard-school`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                school_id: result.data.id,
-                school_name: data.name,
-                school_slug: data.slug,
-                director_name: data.director_name,
-                director_email: data.director_email,
-                send_welcome_email: data.send_welcome_email,
-              }),
-            }
-          );
-          const json = await res.json();
-          setOnboardResult({
-            school_name: data.name,
-            director_email: data.director_email,
-            user_created: json.user_created ?? false,
-            user_already_existed: json.user_already_existed ?? false,
-            temp_password: json.temp_password ?? null,
-            email_sent: json.email_sent ?? false,
-            email_error: json.email_error ?? null,
-          });
-        } catch (err) {
-          setOnboardResult({
-            school_name: data.name,
-            director_email: data.director_email,
-            user_created: false,
-            user_already_existed: false,
-            temp_password: null,
-            email_sent: false,
-            email_error: err instanceof Error ? err.message : 'Failed to run onboarding',
-          });
-        } finally {
-          setOnboarding(false);
-        }
+  setOnboarding(true);
+  try {
+    const token = await getAuthToken();
+
+    const cleanDirectorEmail = data.director_email?.trim().toLowerCase();
+    const cleanDirectorName = data.director_name?.trim();
+
+    // ✅ FIXED PAYLOAD
+    const payload = {
+      action: 'create',
+      school_id: result.data.id,
+      school_name: data.name,
+      school_slug: data.slug,
+      director_name: cleanDirectorName,
+      director_email: cleanDirectorEmail,
+      send_welcome_email: !!data.send_welcome_email,
+    };
+
+    // ✅ FIXED FETCH
+    const res = await fetch(
+      `${EDGE_FUNCTIONS_BASE_URL}/manage-school-user`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(payload),
       }
+    );
+
+    const json = await res.json();
+
+    if (!res.ok) {
+      throw new Error(json.error || 'Failed to create director');
+    }
+
+    setOnboardResult({
+      school_name: data.name,
+      director_email: data.director_email,
+      user_created: json.user_created ?? false,
+      user_already_existed: json.user_already_existed ?? false,
+      temp_password: json.temp_password ?? null,
+      email_sent: json.email_sent ?? false,
+      email_error: json.email_error ?? null,
+    });
+
+  } catch (err) {
+    setOnboardResult({
+      school_name: data.name,
+      director_email: data.director_email,
+      user_created: false,
+      user_already_existed: false,
+      temp_password: null,
+      email_sent: false,
+      email_error: err instanceof Error ? err.message : 'Failed to run onboarding',
+    });
+  } finally {
+    setOnboarding(false);
+  }
+}
     } else {
       showNotif('error', result.error || 'Failed to create school');
     }

@@ -273,6 +273,10 @@ export default function SchoolFormModal({ mode, school, onClose, onSubmit, submi
         max_teachers: school.max_teachers || 50,
         is_active: school.is_active ?? true,
         disabled_modules: (school as any).disabled_modules || [],
+        director_name: '',
+        director_email: '',
+        create_director_account: true,
+        send_welcome_email: true,
       });
     } else {
       setForm(DEFAULT_FORM);
@@ -373,7 +377,7 @@ export default function SchoolFormModal({ mode, school, onClose, onSubmit, submi
               <button
                 key={s.id}
                 type="button"
-                onClick={() => setActiveSection(s.id)}
+                onClick={() => setActiveSection(s.id as SectionId)}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                   activeSection === s.id
                     ? 'bg-white text-teal-700 shadow-sm'
@@ -402,7 +406,7 @@ export default function SchoolFormModal({ mode, school, onClose, onSubmit, submi
                   <label className="block text-sm font-medium text-gray-700 mb-1">Subdomain <span className="text-red-500">*</span></label>
                   <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-teal-500">
                     <input type="text" required value={form.slug} onChange={(e) => handleSlug(e.target.value)} placeholder="greenfield" className="flex-1 px-3 py-2 text-sm font-mono focus:outline-none" />
-                    <span className="px-3 py-2 bg-gray-50 text-xs text-gray-400 border-l border-gray-200 whitespace-nowrap">.gosmart.app</span>
+                    <span className="px-3 py-2 bg-gray-50 text-xs text-gray-400 border-l border-gray-200 whitespace-nowrap">.gosmartmis.rw</span>
                   </div>
                 </div>
                 <div>

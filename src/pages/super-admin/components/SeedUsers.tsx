@@ -4,7 +4,7 @@ import { supabase, getAuthToken } from '../../../lib/supabase';
 const TEST_ACCOUNTS = [
   { role: 'super-admin', email: 'superadmin@gosmartmis.rw', name: 'Super Admin', icon: 'ri-shield-star-line', color: 'bg-rose-100 text-rose-700' },
   { role: 'director', email: 'demo.director@gosmartmis.rw', name: 'Dr. Marie Uwimana', icon: 'ri-building-2-line', color: 'bg-amber-100 text-amber-700' },
-  { role: 'school-manager', email: 'demo.manager@gosmartmis.rw', name: 'Mr. Eric Nkurunziza', icon: 'ri-settings-3-line', color: 'bg-slate-100 text-slate-700' },
+  { role: 'school_manager', email: 'demo.manager@gosmartmis.rw', name: 'Mr. Eric Nkurunziza', icon: 'ri-settings-3-line', color: 'bg-slate-100 text-slate-700' },
   { role: 'dean', email: 'demo.dean@gosmartmis.rw', name: 'Mr. Jean Habimana', icon: 'ri-user-star-line', color: 'bg-violet-100 text-violet-700' },
   { role: 'registrar', email: 'demo.registrar@gosmartmis.rw', name: 'Ms. Alice Mukamana', icon: 'ri-file-list-3-line', color: 'bg-teal-100 text-teal-700' },
   { role: 'accountant', email: 'demo.accountant@gosmartmis.rw', name: 'Mr. Patrick Nzeyimana', icon: 'ri-money-dollar-circle-line', color: 'bg-yellow-100 text-yellow-700' },

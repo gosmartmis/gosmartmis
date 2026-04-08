@@ -30,17 +30,10 @@ export default function Sidebar({
   };
 
   const navItems: NavItem[] = [
-    { id: 'dashboard',               label: 'Dashboard',             icon: 'ri-dashboard-line'        },
-    { id: 'academic-overview',       label: 'Academic Overview',     icon: 'ri-book-open-line'        },
-    { id: 'marks-verification',      label: 'Marks Verification',    icon: 'ri-checkbox-circle-line', badge: alertCount },
-    { id: 'marks-approval',          label: 'Marks Approval',        icon: 'ri-file-list-3-line'      },
-    { id: 'report-cards',            label: 'Report Cards',          icon: 'ri-file-text-line'        },
-    { id: 'timetable',               label: 'Timetable',             icon: 'ri-calendar-line'         },
-    { id: 'teacher-workload',        label: 'Teacher Workload',      icon: 'ri-user-star-line'        },
-    { id: 'risk-alerts',             label: 'Risk Alerts',           icon: 'ri-alert-line'            },
-    { id: 'student-risk-monitoring', label: 'Student Monitoring',    icon: 'ri-user-follow-line'      },
-    { id: 'messages',                label: 'Messages',              icon: 'ri-message-3-line'        },
-    { id: 'settings',                label: 'Settings',              icon: 'ri-settings-3-line'       },
+    { id: 'dashboard',           label: 'Dashboard',            icon: 'ri-dashboard-line' },
+    { id: 'classes',             label: 'Classes',              icon: 'ri-building-line' },
+    { id: 'subjects',            label: 'Subjects',             icon: 'ri-book-open-line' },
+    { id: 'teacher-assignments', label: 'Teacher Assignments',  icon: 'ri-user-settings-line', badge: alertCount },
   ];
 
   return (

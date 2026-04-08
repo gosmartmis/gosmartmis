@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 
-const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-const CHECK_URL = `${SUPABASE_URL}/functions/v1/register-school`;
+const SUPABASE_URL =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) ||
+  (import.meta.env.VITE_PUBLIC_SUPABASE_URL as string | undefined);
+
+const CHECK_URL = SUPABASE_URL
+  ? `${SUPABASE_URL}/functions/v1/register-school`
+  : '';
 
 const COLORS = [
   { hex: '#0d9488', name: 'Teal' },
@@ -45,6 +50,11 @@ export default function StepSchoolInfo({ data, onChange, onNext }: Props) {
 
   const checkSlug = useCallback(async (slug: string) => {
     if (!slug || slug.length < 3) { setSlugStatus('idle'); setSlugMsg(''); return; }
+    if (!CHECK_URL) {
+      setSlugStatus('invalid');
+      setSlugMsg('Supabase URL is missing. Set VITE_SUPABASE_URL (or VITE_PUBLIC_SUPABASE_URL).');
+      return;
+    }
     setSlugStatus('checking');
     try {
       const res = await fetch(`${CHECK_URL}?slug=${encodeURIComponent(slug)}`);

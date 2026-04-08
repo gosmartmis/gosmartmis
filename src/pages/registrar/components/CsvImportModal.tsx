@@ -12,8 +12,18 @@ interface ImportResult {
   errors: { row: number; name: string; reason: string }[];
 }
 
+interface StudentCredential {
+  row: number;
+  full_name: string;
+  class_name: string;
+  login_credential: string;
+  temp_password: string;
+}
+
 interface Props {
   schoolId: string;
+  schoolName?: string;
+  schoolSlug?: string;
   onClose: () => void;
   onImported?: () => void;
   defaultTab?: ImportTab;
@@ -37,8 +47,8 @@ function parseCSV(text: string): { headers: string[]; rows: ParsedRow[] } {
 }
 
 // ── Template definitions ───────────────────────────────────────────────────────
-const STUDENT_TEMPLATE_HEADERS = 'full_name,date_of_birth,gender,class_name,parent_name,parent_phone,parent_email,address';
-const STUDENT_TEMPLATE_EXAMPLE = 'Alice Nkusi,2010-03-15,Female,S1A,Grace Nkusi,+250788123456,grace@mail.com,Kigali Rwanda\nBob Mugisha,2009-11-22,Male,S2B,Paul Mugisha,+250788654321,,Kigali Rwanda';
+const STUDENT_TEMPLATE_HEADERS = 'firstname,lastname,sex,class,parent_name,parent_phone,parent_email,date_of_birth,address';
+const STUDENT_TEMPLATE_EXAMPLE = 'Alice,Nkusi,Female,S1A,Grace Nkusi,+250788123456,grace@mail.com,2010-03-15,Kigali Rwanda\nBob,Mugisha,Male,S2B,Paul Mugisha,+250788654321,,2009-11-22,Kigali Rwanda';
 
 const TEACHER_TEMPLATE_HEADERS = 'full_name,email,phone';
 const TEACHER_TEMPLATE_EXAMPLE = 'Dr. Marie Uwimana,marie@school.rw,+250788111222\nMr. Jean Habimana,jean@school.rw,+250788333444';
@@ -54,7 +64,7 @@ function downloadTemplate(type: ImportTab) {
   URL.revokeObjectURL(url);
 }
 
-export default function CsvImportModal({ schoolId, onClose, onImported, defaultTab = 'students' }: Props) {
+export default function CsvImportModal({ schoolId, schoolName = 'School', schoolSlug = '', onClose, onImported, defaultTab = 'students' }: Props) {
   const [tab, setTab] = useState<ImportTab>(defaultTab);
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
@@ -63,6 +73,7 @@ export default function CsvImportModal({ schoolId, onClose, onImported, defaultT
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [credentialRows, setCredentialRows] = useState<StudentCredential[]>([]);
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -75,8 +86,41 @@ export default function CsvImportModal({ schoolId, onClose, onImported, defaultT
 
   // Reset when tab changes
   useEffect(() => {
-    setFile(null); setRows([]); setHeaders([]); setParseError(''); setResult(null); setProgress(0);
+    setFile(null); setRows([]); setHeaders([]); setParseError(''); setResult(null); setProgress(0); setCredentialRows([]);
   }, [tab]);
+
+  const normalizeGender = (value?: string) => {
+    const v = (value || '').trim().toLowerCase();
+    if (['m', 'male', 'boy'].includes(v)) return 'Male';
+    if (['f', 'female', 'girl'].includes(v)) return 'Female';
+    return '';
+  };
+
+  const splitFullName = (fullName: string) => {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) return { firstName: parts[0] || 'Student', lastName: '' };
+    return {
+      firstName: parts[0],
+      lastName: parts.slice(1).join(' '),
+    };
+  };
+
+  const downloadCredentials = () => {
+    if (!credentialRows.length) return;
+    const header = 'row,full_name,class_name,login_credential,temp_password';
+    const lines = credentialRows.map((c) =>
+      [c.row, c.full_name, c.class_name, c.login_credential, c.temp_password]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',')
+    );
+    const blob = new Blob([`${header}\n${lines.join('\n')}`], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'student_credentials.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const processFile = useCallback((f: File) => {
     if (!f.name.endsWith('.csv')) { setParseError('Please upload a .csv file.'); return; }
@@ -107,21 +151,39 @@ export default function CsvImportModal({ schoolId, onClose, onImported, defaultT
     const errors: ImportResult['errors'] = [];
     let success = 0;
     const classMap = new Map(classes.map((c) => [c.name.toLowerCase(), c.id]));
+    const classNameById = new Map(classes.map((c) => [c.id, c.name]));
+    const token = await getAuthToken();
+    const generatedCredentials: StudentCredential[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const name = row['full_name'] || row['name'] || '';
-      if (!name) { errors.push({ row: i + 2, name: '—', reason: 'full_name is required' }); continue; }
-      if (!row['gender']) { errors.push({ row: i + 2, name, reason: 'gender is required' }); continue; }
+      const firstNameRaw = row['firstname'] || row['first_name'] || '';
+      const lastNameRaw = row['lastname'] || row['last_name'] || '';
+      const rawFullName = row['full_name'] || row['name'] || '';
+      const fallbackSplit = splitFullName(rawFullName);
+      const firstName = (firstNameRaw || fallbackSplit.firstName).trim();
+      const lastName = (lastNameRaw || fallbackSplit.lastName).trim();
+      const fullName = `${firstName} ${lastName}`.trim();
+      if (!firstName || !fullName) {
+        errors.push({ row: i + 2, name: '—', reason: 'firstname/lastname (or full_name) is required' });
+        continue;
+      }
+
+      const gender = normalizeGender(row['sex'] || row['gender']);
+      if (!gender) {
+        errors.push({ row: i + 2, name: fullName, reason: 'sex/gender is required (Male/Female)' });
+        continue;
+      }
 
       const className = (row['class_name'] || row['class'] || '').toLowerCase();
       const classId = classMap.get(className) || null;
+      const classDisplayName = classId ? (classNameById.get(classId) || row['class'] || row['class_name'] || 'Unassigned') : (row['class'] || row['class_name'] || 'Unassigned');
 
-      const { error } = await supabase.from('students').insert({
+      const { data: insertedStudent, error } = await supabase.from('students').insert({
         school_id: schoolId,
-        full_name: name.trim(),
+        full_name: fullName,
         date_of_birth: row['date_of_birth'] || null,
-        gender: row['gender']?.trim() || null,
+        gender,
         class_id: classId,
         parent_name: row['parent_name'] || row['guardian_name'] || null,
         parent_phone: row['parent_phone'] || row['guardian_phone'] || null,
@@ -129,12 +191,56 @@ export default function CsvImportModal({ schoolId, onClose, onImported, defaultT
         address: row['address'] || null,
         enrollment_date: row['enrollment_date'] || new Date().toISOString().split('T')[0],
         status: 'active',
-      });
+      }).select('id').maybeSingle();
 
-      if (error) { errors.push({ row: i + 2, name, reason: error.message }); }
-      else { success++; }
+      if (error || !insertedStudent?.id) {
+        errors.push({ row: i + 2, name: fullName, reason: error?.message || 'Failed to create student record' });
+        setProgress(Math.round(((i + 1) / rows.length) * 100));
+        continue;
+      }
+
+      const res = await fetch(`${import.meta.env.VITE_PUBLIC_SUPABASE_URL}/functions/v1/manage-school-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'create',
+          school_id: schoolId,
+          school_name: schoolName,
+          school_slug: schoolSlug,
+          director_name: fullName,
+          target_role: 'student',
+        }),
+      });
+      const json = await res.json();
+
+      if (!res.ok || json.error) {
+        errors.push({ row: i + 2, name: fullName, reason: `Student created, but account creation failed: ${json.error || 'Unknown error'}` });
+        setProgress(Math.round(((i + 1) / rows.length) * 100));
+        continue;
+      }
+
+      if (json.user_id) {
+        await supabase
+          .from('students')
+          .update({ profile_id: json.user_id })
+          .eq('id', insertedStudent.id)
+          .eq('school_id', schoolId);
+      }
+
+      generatedCredentials.push({
+        row: i + 2,
+        full_name: fullName,
+        class_name: classDisplayName,
+        login_credential: json.login_credential || json.registration_number || '',
+        temp_password: json.temp_password || '',
+      });
+      success++;
       setProgress(Math.round(((i + 1) / rows.length) * 100));
     }
+    setCredentialRows(generatedCredentials);
     return { total: rows.length, success, failed: errors.length, errors };
   };
 
@@ -187,9 +293,14 @@ export default function CsvImportModal({ schoolId, onClose, onImported, defaultT
     }
   };
 
-  const requiredCols = tab === 'students' ? ['full_name', 'gender'] : ['full_name', 'email'];
+  const requiredCols = tab === 'students' ? ['firstname/lastname + sex + class (or full_name + gender + class_name)'] : ['full_name', 'email'];
   const missingCols = requiredCols.filter((c) => !headers.includes(c));
-  const canImport = rows.length > 0 && missingCols.length === 0 && !importing && !result;
+  const studentHeaderValid = headers.includes('full_name') || headers.includes('name') || (headers.includes('firstname') && headers.includes('lastname')) || (headers.includes('first_name') && headers.includes('last_name'));
+  const studentGenderValid = headers.includes('gender') || headers.includes('sex');
+  const studentClassValid = headers.includes('class') || headers.includes('class_name');
+  const studentsCanImport = rows.length > 0 && studentHeaderValid && studentGenderValid && studentClassValid && !importing && !result;
+  const teachersCanImport = rows.length > 0 && headers.includes('full_name') && headers.includes('email') && !importing && !result;
+  const canImport = tab === 'students' ? studentsCanImport : teachersCanImport;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -233,7 +344,7 @@ export default function CsvImportModal({ schoolId, onClose, onImported, defaultT
               <p className="text-sm font-semibold text-teal-800">Step 1 — Download the template</p>
               <p className="text-xs text-teal-600 mt-0.5">
                 {tab === 'students'
-                  ? 'Required: full_name, gender — Optional: date_of_birth, class_name, parent_name, parent_phone, parent_email, address'
+                  ? 'Required: firstname, lastname, sex, class (or full_name, gender, class_name) — credentials are auto-generated'
                   : 'Required: full_name, email — Optional: phone'}
               </p>
             </div>
@@ -271,7 +382,13 @@ export default function CsvImportModal({ schoolId, onClose, onImported, defaultT
                 )}
               </div>
               {parseError && <p className="text-xs text-red-500 mt-2 flex items-center gap-1"><i className="ri-error-warning-line"></i>{parseError}</p>}
-              {missingCols.length > 0 && file && (
+              {!canImport && file && tab === 'students' && (
+                <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                  <i className="ri-alert-line"></i>
+                  Ensure CSV includes name, sex/gender, and class columns.
+                </p>
+              )}
+              {!canImport && file && tab === 'teachers' && missingCols.length > 0 && (
                 <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
                   <i className="ri-alert-line"></i>
                   Missing required columns: <strong>{missingCols.join(', ')}</strong>
@@ -375,6 +492,21 @@ export default function CsvImportModal({ schoolId, onClose, onImported, defaultT
                   </p>
                 </div>
               )}
+
+              {tab === 'students' && credentialRows.length > 0 && (
+                <div className="flex items-center justify-between gap-3 p-3 bg-teal-50 border border-teal-100 rounded-xl">
+                  <p className="text-sm text-teal-700 font-medium">
+                    Credentials generated for {credentialRows.length} students.
+                  </p>
+                  <button
+                    onClick={downloadCredentials}
+                    className="px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+                  >
+                    <i className="ri-download-line mr-1"></i>
+                    Download Credentials CSV
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -389,7 +521,7 @@ export default function CsvImportModal({ schoolId, onClose, onImported, defaultT
               {result ? 'Close' : 'Cancel'}
             </button>
             {result ? (
-              <button onClick={() => { setResult(null); setFile(null); setRows([]); setHeaders([]); }}
+              <button onClick={() => { setResult(null); setFile(null); setRows([]); setHeaders([]); setCredentialRows([]); }}
                 className="px-5 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2">
                 <i className="ri-refresh-line"></i>Import More
               </button>

@@ -6,7 +6,7 @@ const SEED_URL = `${SUPABASE_URL}/functions/v1/seed-test-users`;
 const TEST_ACCOUNTS = [
   { role: 'super-admin', email: 'superadmin@gosmartmis.rw', name: 'Super Admin', icon: 'ri-shield-star-line', color: 'bg-rose-100 text-rose-700' },
   { role: 'director', email: 'director@gosmartmis.com', name: 'Dr. Marie Uwimana', icon: 'ri-building-2-line', color: 'bg-amber-100 text-amber-700' },
-  { role: 'school-manager', email: 'schoolmanager@gosmartmis.com', name: 'Mr. Eric Nkurunziza', icon: 'ri-settings-3-line', color: 'bg-slate-100 text-slate-700' },
+  { role: 'school_manager', email: 'schoolmanager@gosmartmis.com', name: 'Mr. Eric Nkurunziza', icon: 'ri-settings-3-line', color: 'bg-slate-100 text-slate-700' },
   { role: 'dean', email: 'dean@gosmartmis.com', name: 'Mr. Jean Habimana', icon: 'ri-user-star-line', color: 'bg-violet-100 text-violet-700' },
   { role: 'registrar', email: 'registrar@gosmartmis.com', name: 'Ms. Alice Mukamana', icon: 'ri-file-list-3-line', color: 'bg-teal-100 text-teal-700' },
   { role: 'accountant', email: 'accountant@gosmartmis.com', name: 'Mr. Patrick Nzeyimana', icon: 'ri-money-dollar-circle-line', color: 'bg-yellow-100 text-yellow-700' },

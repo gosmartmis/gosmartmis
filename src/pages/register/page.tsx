@@ -7,8 +7,13 @@ import StepPlan, { type PlanId } from './components/StepPlan';
 import StepReview from './components/StepReview';
 import StepSuccess from './components/StepSuccess';
 
-const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-const REGISTER_URL = `${SUPABASE_URL}/functions/v1/register-school`;
+const SUPABASE_URL =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) ||
+  (import.meta.env.VITE_PUBLIC_SUPABASE_URL as string | undefined);
+
+const REGISTER_URL = SUPABASE_URL
+  ? `${SUPABASE_URL}/functions/v1/register-school`
+  : '';
 
 interface SuccessData {
   school_name: string;
@@ -52,6 +57,11 @@ export default function RegisterPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
+      if (!REGISTER_URL) {
+        setSubmitError('Supabase URL is missing. Set VITE_SUPABASE_URL (or VITE_PUBLIC_SUPABASE_URL).');
+        return;
+      }
+
       const res = await fetch(REGISTER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

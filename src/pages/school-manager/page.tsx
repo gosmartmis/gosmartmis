@@ -81,7 +81,7 @@ export default function SchoolManagerPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <DemoBanner role="school-manager" />
+      <DemoBanner role="school_manager" />
       <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar 

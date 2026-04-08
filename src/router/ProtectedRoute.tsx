@@ -8,6 +8,11 @@ interface ProtectedRouteProps {
   allowedRoles: string[];
 }
 
+const normalizeRole = (role?: string | null) => {
+  if (!role) return '';
+  return role === 'school-manager' ? 'school_manager' : role;
+};
+
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
   const location = useLocation();
   const { schoolId } = useTenant();
@@ -27,42 +32,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     });
 
     const verify = async () => {
-      const cachedRole = sessionStorage.getItem('user_role');
-      const cachedEmail = sessionStorage.getItem('user_email');
-      const cachedSchoolId = sessionStorage.getItem('user_school_id');
-      const cachedMustChange = sessionStorage.getItem('must_change_password');
-
-      if (cachedRole && cachedEmail) {
-        // If flag is cached, gate immediately without an extra round-trip
-        if (cachedMustChange === 'true') {
-          if (!cancelled) setAuthState('must_change_password');
-          return;
-        }
-
-        // Super-admin bypasses ALL tenant checks
-        if (cachedRole === 'super-admin') {
-          if (!cancelled) {
-            setUserRole(cachedRole);
-            setAuthState('authenticated');
-          }
-          return;
-        }
-
-        // Tenant isolation for school users
-        if (schoolId && cachedSchoolId !== schoolId) {
-          clearAllAuthStorage();
-          if (!cancelled) setAuthState('wrong_tenant');
-          return;
-        }
-
-        if (!cancelled) {
-          setUserRole(cachedRole);
-          setAuthState('authenticated');
-        }
-        return;
-      }
-
-      // No cache — verify with Supabase
+      // Always verify with Supabase; sessionStorage is treated as cache only.
       try {
         const { data: { user }, error } = await supabase.auth.getUser();
         if (error || !user) {
@@ -91,13 +61,15 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
         }
         sessionStorage.removeItem('must_change_password');
 
+        const normalizedRole = normalizeRole(profile.role);
+
         // Super-admin bypasses all tenant checks
-        if (profile.role === 'super-admin') {
-          sessionStorage.setItem('user_role', profile.role);
+        if (normalizedRole === 'super-admin') {
+          sessionStorage.setItem('user_role', normalizedRole);
           sessionStorage.setItem('user_email', profile.email);
           sessionStorage.setItem('user_name', profile.full_name);
           if (!cancelled) {
-            setUserRole(profile.role);
+            setUserRole(normalizedRole);
             setAuthState('authenticated');
           }
           return;
@@ -110,13 +82,13 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
           return;
         }
 
-        sessionStorage.setItem('user_role', profile.role);
+        sessionStorage.setItem('user_role', normalizedRole);
         sessionStorage.setItem('user_email', profile.email);
         sessionStorage.setItem('user_name', profile.full_name);
         if (profile.school_id) sessionStorage.setItem('user_school_id', profile.school_id);
 
         if (!cancelled) {
-          setUserRole(profile.role);
+          setUserRole(normalizedRole);
           setAuthState('authenticated');
         }
       } catch (err) {
@@ -155,18 +127,20 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     return <Navigate to="/login?must_change=1" replace />;
   }
 
-  if (userRole && !allowedRoles.includes(userRole)) {
+  const normalizedAllowedRoles = allowedRoles.map((r) => normalizeRole(r));
+
+  if (userRole && !normalizedAllowedRoles.includes(normalizeRole(userRole))) {
     const roleRoutes: Record<string, string> = {
       'super-admin': '/super-admin',
       'director': '/director',
-      'school-manager': '/school-manager',
+      'school_manager': '/school-manager',
       'dean': '/dean',
       'registrar': '/registrar',
       'accountant': '/accountant',
       'teacher': '/teacher',
       'student': '/student',
     };
-    return <Navigate to={roleRoutes[userRole] || '/login'} replace />;
+    return <Navigate to={roleRoutes[normalizeRole(userRole)] || '/login'} replace />;
   }
 
   return <>{children}</>;

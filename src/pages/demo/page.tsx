@@ -5,6 +5,11 @@ import { signInWithEmail } from '../../lib/supabase';
 // ─── Demo Credentials ──────────────────────────────────────────────────────
 const DEMO_PASSWORD = 'Demo@GoSmart2024';
 
+const normalizeRole = (role?: string | null) => {
+  if (!role) return '';
+  return role === 'school-manager' ? 'school_manager' : role;
+};
+
 const DEMO_ROLES = [
   {
     id: 'director',
@@ -91,7 +96,7 @@ const DEMO_ROLES = [
     features: ['My Grades', 'Attendance', 'Report Card', 'Timetable'],
   },
   {
-    id: 'school-manager',
+    id: 'school_manager',
     label: 'School Manager',
     description: 'Operational management — school settings, leaderboards, and academic planning.',
     email: 'demo.manager@gosmartmis.rw',
@@ -240,7 +245,7 @@ export default function DemoPortalPage() {
     setErrorMsg('');
     try {
       const profile = await signInWithEmail(role.email, DEMO_PASSWORD);
-      sessionStorage.setItem('user_role', profile.role);
+      sessionStorage.setItem('user_role', normalizeRole(profile.role));
       sessionStorage.setItem('user_email', profile.email);
       sessionStorage.setItem('user_name', profile.full_name);
       if (profile.school_id) {
@@ -253,7 +258,7 @@ export default function DemoPortalPage() {
       try {
         await seedDemoAccounts();
         const profile = await signInWithEmail(role.email, DEMO_PASSWORD);
-        sessionStorage.setItem('user_role', profile.role);
+        sessionStorage.setItem('user_role', normalizeRole(profile.role));
         sessionStorage.setItem('user_email', profile.email);
         sessionStorage.setItem('user_name', profile.full_name);
         if (profile.school_id) {

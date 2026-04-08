@@ -1,5 +1,11 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+declare const Deno: {
+  env: { get: (key: string) => string | undefined }
+  serve: (handler: (req: Request) => Response | Promise<Response>) => void
+}
+
+// @ts-ignore: Deno Edge Functions support URL imports at runtime; TS in the web app workspace cannot resolve this module.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { generateDefaultPassword, sendWelcomeEmailViaResend } from '../_shared/onboarding.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -10,7 +16,33 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
 }
 
-serve(async (req) => {
+function normalizePlan(plan: string | undefined) {
+  const raw = (plan || 'trial').trim().toLowerCase()
+
+  // Backward + current frontend compatibility
+  const normalized =
+    raw === 'nursery' ? 'starter' :
+    raw === 'primary' ? 'pro' :
+    raw === 'nursery-primary' ? 'enterprise' :
+    raw
+
+  const allowed = ['trial', 'starter', 'pro', 'enterprise']
+  return allowed.includes(normalized) ? normalized : 'trial'
+}
+
+async function ensureNoCrossTenantReassignment(admin: any, userId: string, schoolId: string) {
+  const { data: existingProfile } = await admin
+    .from('profiles')
+    .select('school_id')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (existingProfile?.school_id && existingProfile.school_id !== schoolId) {
+    throw new Error('Cross-tenant user reassignment is blocked')
+  }
+}
+
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
   const admin = createClient(
@@ -47,6 +79,8 @@ serve(async (req) => {
     plan = 'trial', primary_color = '#0d9488',
   } = body
 
+  const normalizedPlan = normalizePlan(plan)
+
   if (!school_name?.trim()) return json({ error: 'school_name is required' }, 400)
   if (!slug?.trim()) return json({ error: 'slug is required' }, 400)
   if (!director_email?.trim()) return json({ error: 'director_email is required' }, 400)
@@ -72,12 +106,12 @@ serve(async (req) => {
     phone: phone?.trim() || null,
     address: address?.trim() || null,
     email: director_email.trim(),
-    subscription_status: plan === 'trial' ? 'trial' : 'active',
-    subscription_plan: plan,
+    subscription_status: normalizedPlan === 'trial' ? 'trial' : 'active',
+    subscription_plan: normalizedPlan,
     subscription_expiry_date: expiryDate,
     is_active: true,
-    max_students: plan === 'pro' ? 2000 : plan === 'starter' ? 500 : 150,
-    max_teachers: plan === 'pro' ? 200 : plan === 'starter' ? 50 : 15,
+    max_students: normalizedPlan === 'enterprise' ? 5000 : normalizedPlan === 'pro' ? 2000 : normalizedPlan === 'starter' ? 500 : 150,
+    max_teachers: normalizedPlan === 'enterprise' ? 500 : normalizedPlan === 'pro' ? 200 : normalizedPlan === 'starter' ? 50 : 15,
     primary_color,
     secondary_color: '#059669',
   }).select().maybeSingle()
@@ -87,8 +121,7 @@ serve(async (req) => {
   }
 
   // Create director auth account
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#$'
-  const tempPassword = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+  const tempPassword = generateDefaultPassword()
 
   let userId: string | null = null
   let userAlreadyExisted = false
@@ -103,7 +136,7 @@ serve(async (req) => {
   if (authErr) {
     if (authErr.message.includes('already') || authErr.message.includes('registered')) {
       const { data: list } = await admin.auth.admin.listUsers()
-      const found = list?.users?.find(u => u.email === director_email.trim())
+      const found = list?.users?.find((u: { email?: string; id?: string }) => u.email === director_email.trim())
       userId = found?.id ?? null
       userAlreadyExisted = true
     } else {
@@ -114,13 +147,29 @@ serve(async (req) => {
     userId = authData.user?.id ?? null
   }
 
+  if (userId && userAlreadyExisted) {
+    const { error: forceResetError } = await admin.auth.admin.updateUserById(userId, { password: tempPassword })
+    if (forceResetError) {
+      await admin.from('schools').delete().eq('id', school.id)
+      return json({ error: `Could not set director default password: ${forceResetError.message}` }, 500)
+    }
+  }
+
   if (userId) {
+    try {
+      await ensureNoCrossTenantReassignment(admin, userId, school.id)
+    } catch (err: any) {
+      await admin.from('schools').delete().eq('id', school.id)
+      return json({ error: err?.message || 'Cross-tenant user reassignment is blocked' }, 403)
+    }
+
     await admin.from('profiles').upsert({
       id: userId,
       school_id: school.id,
       full_name: director_name.trim(),
       email: director_email.trim(),
       role: 'director',
+      must_change_password: true,
     }, { onConflict: 'id' })
   }
 
@@ -137,6 +186,7 @@ serve(async (req) => {
 
   // ── Welcome email via Resend ───────────────────────────────────────────────
   let emailSent = false
+  let emailError: string | null = null
   const resendKey = Deno.env.get('RESEND_API_KEY')
 
   if (resendKey) {
@@ -144,11 +194,13 @@ serve(async (req) => {
     const brandColor = primary_color || '#0d9488'
     const initial = school_name.trim().charAt(0).toUpperCase()
 
-    const planLabel = plan === 'trial'
+    const planLabel = normalizedPlan === 'trial'
       ? '14-day Free Trial'
-      : plan === 'starter'
+      : normalizedPlan === 'starter'
       ? 'Starter Plan'
-      : 'Professional Plan'
+      : normalizedPlan === 'pro'
+      ? 'Professional Plan'
+      : 'Enterprise Plan'
 
     const credentialsBlock = !userAlreadyExisted
       ? `<tr>
@@ -246,24 +298,21 @@ serve(async (req) => {
 </body>
 </html>`
 
-    try {
-      const emailRes = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'GoSmart MIS <onboarding@gosmartmis.rw>',
-          to: [director_email.trim()],
-          subject: `Your school "${school_name}" is live on GoSmart MIS!`,
-          html,
-        }),
-      })
-      emailSent = emailRes.ok
-    } catch {
-      emailSent = false
-    }
+    const emailResult = await sendWelcomeEmailViaResend({
+      apiKey: resendKey,
+      to: director_email.trim(),
+      fullName: director_name.trim(),
+      roleLabel: 'director',
+      schoolName: school_name.trim(),
+      loginUrl,
+      loginCredential: director_email.trim(),
+      tempPassword,
+      resetLink,
+    })
+    emailSent = emailResult.sent
+    emailError = emailResult.error
+  } else {
+    emailError = 'RESEND_API_KEY is not configured.'
   }
 
   return json({
@@ -273,10 +322,12 @@ serve(async (req) => {
     school_url: `https://${cleanSlug}.gosmartmis.rw`,
     slug: cleanSlug,
     director_email: director_email.trim(),
-    temp_password: userAlreadyExisted ? null : tempPassword,
+    temp_password: tempPassword,
     reset_link: resetLink,
     trial_expiry: expiryDate,
     email_sent: emailSent,
+    email_error: emailError,
     user_already_existed: userAlreadyExisted,
+    normalized_plan: normalizedPlan,
   })
 })

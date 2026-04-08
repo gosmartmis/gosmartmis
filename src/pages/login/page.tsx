@@ -5,6 +5,11 @@ import { getSubdomainInfo } from '../../utils/subdomain';
 import { supabase, signInWithEmail, sendPasswordReset, type UserProfile } from '../../lib/supabase';
 import ForceChangePassword from './ForceChangePassword';
 
+const normalizeRole = (role?: string | null) => {
+  if (!role) return '';
+  return role === 'school-manager' ? 'school_manager' : role;
+};
+
 // ─── School color helper ───────────────────────────────────────────────────
 function useSchoolColors(primary?: string | null, secondary?: string | null) {
   const p = primary || '#0d9488';
@@ -21,7 +26,7 @@ function useSchoolColors(primary?: string | null, secondary?: string | null) {
 }
 
 const ALL_ROLES = [
-  { id: 'school-manager', label: 'School Manager', icon: 'ri-settings-3-line', color: 'from-slate-500 to-gray-600', bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600', route: '/school-manager', description: 'School operations management' },
+  { id: 'school_manager', label: 'School Manager', icon: 'ri-settings-3-line', color: 'from-slate-500 to-gray-600', bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600', route: '/school-manager', description: 'School operations management' },
   { id: 'super-admin', label: 'Super Admin', icon: 'ri-shield-star-line', color: 'from-rose-500 to-pink-600', bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-600', route: '/super-admin', description: 'System-wide administration' },
   { id: 'director', label: 'Director', icon: 'ri-building-2-line', color: 'from-amber-500 to-orange-600', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-600', route: '/director', description: 'School-level management' },
   { id: 'dean', label: 'Dean', icon: 'ri-user-star-line', color: 'from-violet-500 to-purple-600', bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-600', route: '/dean', description: 'Academic oversight' },
@@ -299,7 +304,9 @@ export default function LoginPage() {
 
       const profile = await signInWithEmail(loginEmail, password);
 
-      if (profile.role !== selectedRole) {
+      const normalizedProfileRole = normalizeRole(profile.role);
+
+      if (normalizedProfileRole !== selectedRole) {
         setError(`This account is registered as "${profile.role}". Please go back and select the correct role.`);
         setLoading(false);
         return;
@@ -317,7 +324,7 @@ export default function LoginPage() {
         return;
       }
 
-      sessionStorage.setItem('user_role', profile.role);
+      sessionStorage.setItem('user_role', normalizedProfileRole);
       sessionStorage.setItem('user_email', profile.email);
       sessionStorage.setItem('user_name', profile.full_name);
       if (profile.school_id) sessionStorage.setItem('user_school_id', profile.school_id);
@@ -331,11 +338,11 @@ export default function LoginPage() {
       }
 
       const routeMap: Record<string, string> = {
-        'super-admin': '/super-admin', 'director': '/director', 'school-manager': '/school-manager',
+        'super-admin': '/super-admin', 'director': '/director', 'school_manager': '/school-manager',
         'dean': '/dean', 'registrar': '/registrar', 'accountant': '/accountant',
         'teacher': '/teacher', 'student': '/student',
       };
-      navigate(routeMap[profile.role] || '/');
+      navigate(routeMap[normalizedProfileRole] || '/');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Sign in failed. Please try again.');
     } finally {
@@ -350,7 +357,7 @@ export default function LoginPage() {
   // ── Force password change screen ──────────────────────────────────────────
   if (step === 'force_change' && pendingProfile) {
     const routeMap: Record<string, string> = {
-      'super-admin': '/super-admin', director: '/director', 'school-manager': '/school-manager',
+      'super-admin': '/super-admin', director: '/director', 'school_manager': '/school-manager',
       dean: '/dean', registrar: '/registrar', accountant: '/accountant',
       teacher: '/teacher', student: '/student',
     };
@@ -361,7 +368,7 @@ export default function LoginPage() {
         userId={pendingProfile.id}
         onSuccess={() => {
           sessionStorage.removeItem('must_change_password');
-          navigate(routeMap[pendingProfile.role] || '/');
+          navigate(routeMap[normalizeRole(pendingProfile.role)] || '/');
         }}
       />
     );

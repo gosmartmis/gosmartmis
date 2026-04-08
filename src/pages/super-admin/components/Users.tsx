@@ -4,7 +4,7 @@ import { useUsers } from '../../../hooks/useUsers';
 const ROLE_LABELS: Record<string, string> = {
   'super-admin': 'Super Admin',
   director: 'Director',
-  'school-manager': 'School Manager',
+  school_manager: 'School Manager',
   dean: 'Dean',
   registrar: 'Registrar',
   accountant: 'Accountant',
@@ -15,7 +15,7 @@ const ROLE_LABELS: Record<string, string> = {
 const ROLE_BADGE: Record<string, string> = {
   'super-admin': 'bg-rose-100 text-rose-700',
   director: 'bg-violet-100 text-violet-700',
-  'school-manager': 'bg-indigo-100 text-indigo-700',
+  school_manager: 'bg-indigo-100 text-indigo-700',
   dean: 'bg-sky-100 text-sky-700',
   registrar: 'bg-cyan-100 text-cyan-700',
   accountant: 'bg-orange-100 text-orange-700',
